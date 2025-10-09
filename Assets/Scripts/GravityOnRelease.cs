@@ -1,42 +1,38 @@
+using Oculus.Interaction;
 using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
 
 [RequireComponent(typeof(Rigidbody))]
 public class GravityOnRelease : MonoBehaviour
 {
     private Rigidbody rb;
-    private bool isHeld = true;
-    private bool hasBeenReleased = false;
+    private bool hasBeenGrabbedOnce = false; // pour savoir si lâ€™objet a dÃ©jÃ  Ã©tÃ© attrapÃ© une fois
 
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
-        rb.useGravity = false; // Pas de gravité au départ
-        rb.linearVelocity = Vector3.zero; // S'assure qu'il ne bouge pas au début
-        rb.angularVelocity = Vector3.zero;
+
+        // GravitÃ© dÃ©sactivÃ©e au dÃ©marrage
+        rb.useGravity = false;
+        rb.isKinematic = true;
     }
 
-    private void Update()
+    public void OnGrab()
     {
-        if (!isHeld && !hasBeenReleased)
+        rb.isKinematic = false;
+    }
+
+    public void OnRelease()
+    {
+        
+        Debug.Log("objet release");
+        // Si câ€™est la premiÃ¨re fois quâ€™on relÃ¢che lâ€™objet â†’ on active la gravitÃ©
+        if (!hasBeenGrabbedOnce)
         {
-            rb.useGravity = true;   // Active la gravité à la libération
-            hasBeenReleased = true;
+            rb.useGravity = true;
+            hasBeenGrabbedOnce = true;
+            
         }
-    }
-
-    // Appelle cette fonction depuis ton système VR quand l'objet est lâché
-    public void Release()
-    {
-        isHeld = false;
-    }
-
-    // Optionnel : si tu veux pouvoir le reprendre
-    public void Grab()
-    {
-        isHeld = true;
-        rb.useGravity = false;      // Désactive la gravité quand on reprend
-        hasBeenReleased = false;
-        rb.linearVelocity = Vector3.zero; // Stoppe tout mouvement résiduel
-        rb.angularVelocity = Vector3.zero;
     }
 }
