@@ -764,6 +764,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: mini simple skeleton demo Variant
       objectReference: {fileID: 0}
+    - target: {fileID: 6905831238309214087, guid: aebbefc6e34de2648bc1a1030b11e1b9, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 6924776655089343395, guid: aebbefc6e34de2648bc1a1030b11e1b9, type: 3}
       propertyPath: target
       value: 
@@ -1184,6 +1188,10 @@ PrefabInstance:
     - target: {fileID: 5946308328309401216, guid: 3e8e7cbe9bb1aef4f9e8cac06556824e, type: 3}
       propertyPath: m_Name
       value: Ground
+      objectReference: {fileID: 0}
+    - target: {fileID: 5946308328309401216, guid: 3e8e7cbe9bb1aef4f9e8cac06556824e, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6471205680981507130, guid: 3e8e7cbe9bb1aef4f9e8cac06556824e, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1955,6 +1963,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: AshStump
       objectReference: {fileID: 0}
+    - target: {fileID: 1494676776529385495, guid: 0860427e5e2c9ff4eb5fb0df4532c4d1, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 2303019701552218797, guid: 0860427e5e2c9ff4eb5fb0df4532c4d1, type: 3}
       propertyPath: m_LocalPosition.x
       value: -0.03294173
@@ -2112,6 +2124,10 @@ PrefabInstance:
     - target: {fileID: -8679921383154817045, guid: 27f19f244afa43c43b7c5bff88b185bb, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -7511558181221131132, guid: 27f19f244afa43c43b7c5bff88b185bb, type: 3}
+      propertyPath: m_RenderingLayerMask
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 27f19f244afa43c43b7c5bff88b185bb, type: 3}
       propertyPath: m_Name
