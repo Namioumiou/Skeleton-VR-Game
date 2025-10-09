@@ -1,26 +1,39 @@
 using UnityEngine;
-using UnityEngine.Events;
 
 public class Health : MonoBehaviour
 {
     public int maxHealth = 50;
-    public UnityEvent onDeath;
 
-    int current;
+    [HideInInspector] public int currentHealth;
+    [HideInInspector] public bool IsDead = false;
 
-    void Awake() => current = maxHealth;
+    void Awake()
+    {
+        currentHealth = maxHealth;
+    }
 
     public void TakeDamage(int amount)
     {
-        current = Mathf.Max(0, current - amount);
-        Debug.Log($"[{name}] HP: {current}/{maxHealth}");
+        if (IsDead) return;
 
-        if (current <= 0) Die();
+        currentHealth -= amount;
+        currentHealth = Mathf.Max(currentHealth, 0);
+
+        Debug.Log($"[{name}] HP: {currentHealth}/{maxHealth}");
+
+        if (currentHealth <= 0)
+            Die();
     }
 
-    void Die()
+    private void Die()
     {
-        onDeath?.Invoke();
-        Destroy(gameObject); // ou Destroy(transform.root.gameObject);
+        IsDead = true;
+
+        SkeletonAI ai = GetComponent<SkeletonAI>();
+        if (ai != null)
+            ai.DieImmediately();
+        else
+            Destroy(gameObject);
     }
+
 }
