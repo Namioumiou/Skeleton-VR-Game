@@ -35,5 +35,4 @@ public class Health : MonoBehaviour
         else
             Destroy(gameObject);
     }
-
 }

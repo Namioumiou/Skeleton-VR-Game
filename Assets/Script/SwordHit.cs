@@ -10,8 +10,7 @@ public class SwordHit : MonoBehaviour
         if (skeleton != null)
         {
             Vector3 hitDir = skeleton.transform.position - transform.position;
-            skeleton.TakeHit(hitDir, swordDamage);
+            skeleton.TakeHit(hitDir.normalized, swordDamage);
         }
     }
-
 }

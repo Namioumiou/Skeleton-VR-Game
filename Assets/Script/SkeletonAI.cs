@@ -7,10 +7,15 @@ public class SkeletonAI : MonoBehaviour
     [Header("Réaction aux coups")]
     public AudioClip hitSound;
     public AudioClip deathSound;
-    public float knockbackForce = 3f;
+    public float knockbackForce = 5f;
     [HideInInspector] public AudioSource audioSource;
 
+    private bool isKnockingBack = false;
+    private float speed = 0f;
+
     [HideInInspector] public bool isDead = false;
+
+    [Header("Mort")] public float timeBeforeDestroy = 1.5f; // temps avant destruction, en secondes
 
     [Header("Cible")]
     public Transform target;
@@ -55,13 +60,28 @@ public class SkeletonAI : MonoBehaviour
     {
         if (!target) return;
 
+        // Si le squelette est mort, bloquer tout Update de mouvement
+        if (isDead)
+        {
+            speed = 0f;
+            return;
+        }
+
         MoveAndAttack();
         ApplyGravity();
         cooldown -= Time.deltaTime;
+
+        // Met à jour Speed seulement si pas knockback
+        if (animator && !isKnockingBack)
+        {
+            animator.SetFloat("Speed", speed);
+        }
     }
 
     void MoveAndAttack()
     {
+        if (isKnockingBack || isDead) return;
+
         Vector3 toTarget = target.position - transform.position;
         Vector3 flatDir = new Vector3(toTarget.x, 0f, toTarget.z);
         float flatDistance = flatDir.magnitude;
@@ -73,7 +93,7 @@ public class SkeletonAI : MonoBehaviour
             transform.rotation = Quaternion.Slerp(transform.rotation, look, rotateSpeed * Time.deltaTime);
         }
 
-        float speed = 0f;
+        speed = 0f;
 
         if (flatDistance > attackRange)
         {
@@ -85,9 +105,6 @@ public class SkeletonAI : MonoBehaviour
         {
             TryAttack();
         }
-
-        if (animator != null)
-            animator.SetFloat("Speed", speed);
     }
 
     void ApplyGravity()
@@ -111,38 +128,36 @@ public class SkeletonAI : MonoBehaviour
         cooldown = attackCooldown;
     }
 
-    // Appel depuis l'épée
     public void TakeHit(Vector3 hitDirection, int damage = 5)
     {
-        if (isDead) return; // Ignore si déjà mort
+        if (isDead) return;
 
-        // Retirer des PV via Health
         Health health = GetComponent<Health>();
         if (health != null)
             health.TakeDamage(damage);
 
-        // Vérifier si le squelette est mort avec ce coup
         if (health != null && health.IsDead)
         {
-            DieImmediately(); // Jouer le son de mort et supprimer le squelette
-            return;           // Ne pas jouer le son de hit
+            DieImmediately();
+            return;
         }
 
-        // Jouer son de hit seulement si pas mort
         if (hitSound && audioSource)
             audioSource.PlayOneShot(hitSound);
 
-        // Knockback
         StartCoroutine(ApplyKnockback(hitDirection));
     }
 
-
     private IEnumerator ApplyKnockback(Vector3 hitDirection)
     {
+        isKnockingBack = true;
+
+        if (animator) animator.SetTrigger("Knockback"); // restera sur Idle
+
         float knockDuration = 0.2f;
         float elapsed = 0f;
-        Vector3 knockDir = -hitDirection.normalized * knockbackForce;
-        knockDir.y = 1f; // léger soulèvement
+        Vector3 knockDir = hitDirection.normalized * knockbackForce;
+        knockDir.y = 1f;
 
         while (elapsed < knockDuration)
         {
@@ -150,28 +165,38 @@ public class SkeletonAI : MonoBehaviour
             elapsed += Time.deltaTime;
             yield return null;
         }
+
+        isKnockingBack = false;
     }
 
     public void DieImmediately()
     {
-        if (isDead) return; // éviter double appel
+        if (isDead) return;
         isDead = true;
 
-        this.enabled = false; // stop IA
+        // Bloquer l'IA et le mouvement
+        moveSpeed = 0f;
+        attackRange = 0f;
+        cooldown = Mathf.Infinity;
 
-        if (deathSound != null && audioSource != null)
-        {
-            audioSource.Stop(); // stopper tout autre son
+        // Désactiver le CharacterController pour éviter tout déplacement
+        if (cc != null) cc.enabled = false;
+
+        // Déclencher l'animation de mort
+        if (animator != null)
+            animator.SetTrigger("Die");
+
+        // Jouer le son de mort
+        if (deathSound && audioSource)
             audioSource.PlayOneShot(deathSound);
-        }
 
-        // Délai avant destruction pour laisser le son se jouer
-        StartCoroutine(DestroyAfterSound(deathSound != null ? deathSound.length : 0f));
+        // Détruire le squelette après timeBeforeDestroy secondes
+        StartCoroutine(DestroyAfterDelay());
     }
 
-    private IEnumerator DestroyAfterSound(float delay)
+    private IEnumerator DestroyAfterDelay()
     {
-        yield return new WaitForSeconds(delay); // attendre la fin du son
+        yield return new WaitForSeconds(timeBeforeDestroy);
         Destroy(gameObject);
     }
 
