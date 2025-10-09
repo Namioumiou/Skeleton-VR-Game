@@ -16,21 +16,28 @@ public class SkeletonAI : MonoBehaviour
     public float attackCooldown = 1.0f;
     public int damage = 5;
 
-    private CharacterController cc;
-    private Animator animator;
-    private float verticalVelocity;
-    private float cooldown;
+    CharacterController cc;
+    Animator animator;
+    float cooldown;
+    Vector3 velocity; // <-- gravité ici
 
     void Awake()
     {
         cc = GetComponent<CharacterController>();
-        animator = GetComponent<Animator>(); // ✅ Récupère l’Animator
+        animator = GetComponent<Animator>();
     }
 
     void Start()
     {
-        if (target == null && Camera.main != null)
-            target = Camera.main.transform;
+        if (!target && Camera.main) target = Camera.main.transform;
+
+        // (Optionnel) Snap au sol au spawn pour éviter de "flotter" si instancié trop haut
+        if (Physics.Raycast(transform.position + Vector3.up * 1.0f, Vector3.down, out var hit, 5f))
+        {
+            var p = transform.position;
+            p.y = hit.point.y;
+            transform.position = p;
+        }
     }
 
     void Update()
@@ -38,57 +45,52 @@ public class SkeletonAI : MonoBehaviour
         if (!target) return;
 
         // Direction horizontale vers la cible
-        Vector3 direction = target.position - transform.position;
-        Vector3 flatDir = new Vector3(direction.x, 0, direction.z);
-        float distance = direction.magnitude;
+        Vector3 toTarget = target.position - transform.position;
+        Vector3 flatDir = new Vector3(toTarget.x, 0f, toTarget.z);
+        float flatDistance = flatDir.magnitude; // <-- distance horizontale
 
-        // Rotation fluide vers la cible
-        if (flatDir.sqrMagnitude > 0.1f)
+        // Rotation fluide
+        if (flatDir.sqrMagnitude > 0.001f)
         {
-            Quaternion lookRotation = Quaternion.LookRotation(flatDir);
-            transform.rotation = Quaternion.Slerp(transform.rotation, lookRotation, rotateSpeed * Time.deltaTime);
+            Quaternion look = Quaternion.LookRotation(flatDir);
+            transform.rotation = Quaternion.Slerp(transform.rotation, look, rotateSpeed * Time.deltaTime);
         }
 
-        // Mouvement
-        Vector3 move = Vector3.zero;
+        // Déplacement horizontal
         float speed = 0f;
-        if (distance > attackRange)
+        if (flatDistance > attackRange)
         {
-            move = flatDir.normalized * moveSpeed;
-            speed = move.magnitude; // ✅ Pour l’animation
-        }
-
-        // Gravité
-        if (cc.isGrounded)
-        {
-            if (verticalVelocity < 0f)
-                verticalVelocity = -1f;
+            Vector3 moveH = flatDir.normalized * moveSpeed;
+            cc.Move(moveH * Time.deltaTime);
+            speed = moveH.magnitude; // pour l'anim
         }
         else
         {
-            verticalVelocity += gravity * Time.deltaTime;
-        }
-        move.y = verticalVelocity;
-
-        // Déplacement
-        cc.Move(move * Time.deltaTime);
-
-        // ✅ Met à jour la vitesse dans l’Animator
-        if (animator)
-            animator.SetFloat("Speed", speed);
-
-        // Attaque
-        if (distance <= attackRange)
-        {
-            if (cooldown <= 0f)
-            {
-                var h = target.GetComponent<Health>();
-                if (h != null)
-                    h.TakeDamage(damage);
-                cooldown = attackCooldown;
-            }
+            TryAttack();
         }
 
+        // Gravité (toujours appliquée)
+        if (cc.isGrounded)
+            velocity.y = -1f;            // colle au sol
+        else
+            velocity.y += gravity * Time.deltaTime;
+
+        cc.Move(velocity * Time.deltaTime);
+
+        // Paramètre d'anim
+        if (animator) animator.SetFloat("Speed", speed);
+
+        // cooldown attaque
         cooldown -= Time.deltaTime;
+    }
+
+    void TryAttack()
+    {
+        if (cooldown > 0f) return;
+
+        var h = target.GetComponent<Health>();
+        if (h) h.TakeDamage(damage);
+
+        cooldown = attackCooldown;
     }
 }
