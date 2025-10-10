@@ -1,5 +1,6 @@
 ﻿<Solution>
   <Project Path="Assembly-CSharp.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
+  <Project Path="Oculus.Haptics.Samples.csproj" />
   <Project Path="Polyperfect.Universal.csproj" />
 </Solution>

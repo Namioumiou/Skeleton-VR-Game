@@ -1,12 +1,17 @@
 using UnityEngine;
 
+[RequireComponent(typeof(BoxCollider))]
 public class SkeletonMeleeAttack : MonoBehaviour
 {
     [Header("Dégâts infligés")]
     public int damage = 10;
 
-    [Header("Cooldown entre 2 coups")]
-    public float attackCooldown = 1.0f;
+    [Header("Cooldown entre attaques")]
+    public float attackCooldown = 1.5f;
+
+    [Header("Références")]
+    public Animator animator; // 👈 à lier dans l'inspector (le skeleton)
+    public string slashTriggerName = "Slash"; // nom du trigger dans l’Animator
 
     private float lastAttackTime = -999f;
 
@@ -23,15 +28,19 @@ public class SkeletonMeleeAttack : MonoBehaviour
     private void TryDealDamage(Collider other)
     {
         if (Time.time - lastAttackTime < attackCooldown)
-            return; // encore en cooldown
+            return; // cooldown
 
-        // Vérifie si c’est le joueur
-        PlayerHealth player = other.GetComponent<PlayerHealth>();
+        var player = other.GetComponent<PlayerHealth>();
         if (player != null && !player.IsDead)
         {
             player.TakeDamage(damage);
             lastAttackTime = Time.time;
-            Debug.Log($"[MeleeAttack] {name} a frappé {other.name} pour {damage} dégâts !");
+
+            // 👇 Lancer l’animation
+            if (animator)
+                animator.SetTrigger(slashTriggerName);
+
+            Debug.Log($"[{name}] Slash hit {other.name} for {damage} dmg!");
         }
     }
 }
