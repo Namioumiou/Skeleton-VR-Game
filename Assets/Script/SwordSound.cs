@@ -1,13 +1,13 @@
 ﻿using UnityEngine;
 
-public class SwordSound_WithCooldown : MonoBehaviour
+public class SwordSound : MonoBehaviour
 {
     [Header("Audio Settings")]
     public AudioSource audioSource;
     public AudioClip whooshClip;
 
     [Header("Motion Settings")]
-    public float speedThreshold = 1.2f;   // vitesse minimale pour déclencher le son
+    public float speedThreshold = 3f;   // vitesse minimale pour déclencher le son
     public float cooldownTime = 0.5f;     // temps minimum entre deux sons
     public float maxSpeed = 5f;
 

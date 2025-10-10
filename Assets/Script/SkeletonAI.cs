@@ -78,6 +78,12 @@ public class SkeletonAI : MonoBehaviour
         }
     }
 
+    void OnDestroy()
+    {
+        if (SkeletonManager.Instance != null)
+            SkeletonManager.Instance.UnregisterSkeleton(gameObject);
+    }
+
     void MoveAndAttack()
     {
         if (isKnockingBack || isDead) return;
@@ -174,23 +180,23 @@ public class SkeletonAI : MonoBehaviour
         if (isDead) return;
         isDead = true;
 
+        // Désenregistre immédiatement pour libérer la place (optionnel)
+        if (SkeletonManager.Instance != null)
+            SkeletonManager.Instance.UnregisterSkeleton(gameObject);
+
         // Bloquer l'IA et le mouvement
         moveSpeed = 0f;
         attackRange = 0f;
         cooldown = Mathf.Infinity;
 
-        // Désactiver le CharacterController pour éviter tout déplacement
         if (cc != null) cc.enabled = false;
 
-        // Déclencher l'animation de mort
         if (animator != null)
             animator.SetTrigger("Die");
 
-        // Jouer le son de mort
         if (deathSound && audioSource)
             audioSource.PlayOneShot(deathSound);
 
-        // Détruire le squelette après timeBeforeDestroy secondes
         StartCoroutine(DestroyAfterDelay());
     }
 
