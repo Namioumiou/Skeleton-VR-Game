@@ -4,37 +4,44 @@ using System.Collections;
 [RequireComponent(typeof(CharacterController))]
 public class SkeletonAI : MonoBehaviour
 {
-    [Header("Réaction aux coups")]
-    public AudioClip hitSound;
-    public AudioClip deathSound;
-    public float knockbackForce = 5f;
-    [HideInInspector] public AudioSource audioSource;
-
-    private bool isKnockingBack = false;
-    private float speed = 0f;
-
-    [HideInInspector] public bool isDead = false;
-
-    [Header("Mort")] public float timeBeforeDestroy = 1.5f; // temps avant destruction, en secondes
-
     [Header("Cible")]
-    public Transform target;
+    public Transform target; // assigne PlayerController (Transform) si possible
 
     [Header("Déplacement")]
     public float moveSpeed = 2.5f;
     public float rotateSpeed = 10f;
     public float gravity = -9.81f;
 
+    [Header("Sol")]
+    public LayerMask groundLayers = ~0;
+    public float snapToGroundDistance = 5f;
+
     [Header("Combat")]
-    public float attackRange = 1.4f;
+    public float attackRange = 1.4f;            // portée sphérique
+    public float verticalTolerance = 1.0f;      // diff de hauteur max pour frapper
+    public bool requireLineOfSight = true;      // évite de frapper à travers murs/sol
+    public LayerMask losObstacles = ~0;         // couches bloquant le ray
     public float attackCooldown = 1.0f;
     public int damage = 5;
 
-    [HideInInspector] public Animator animator;
+    [Header("Feedback")]
+    public AudioClip hitSound;
+    public AudioClip deathSound;
+    public float knockbackForce = 5f;
 
-    private CharacterController cc;
-    private float cooldown;
-    private Vector3 velocity;
+    [Header("Debug")]
+    public bool verbose = false;
+
+    // --- état interne ---
+    CharacterController cc;
+    Animator animator;
+    AudioSource audioSource;
+
+    bool isKnockingBack = false;
+    bool isDead = false;
+    float cooldown = 0f;
+    Vector3 velocity;
+    float animSpeed = 0f;
 
     void Awake()
     {
@@ -47,35 +54,32 @@ public class SkeletonAI : MonoBehaviour
     {
         if (!target && Camera.main) target = Camera.main.transform;
 
-        // Snap au sol
-        if (Physics.Raycast(transform.position + Vector3.up * 1.0f, Vector3.down, out var hit, 5f))
-        {
-            Vector3 p = transform.position;
-            p.y = hit.point.y;
-            transform.position = p;
-        }
+        SnapToGroundOnce();
     }
 
     void Update()
     {
-        if (!target) return;
-
-        // Si le squelette est mort, bloquer tout Update de mouvement
-        if (isDead)
+        if (!target || isDead)
         {
-            speed = 0f;
+            SetAnimSpeed(0f);
             return;
         }
 
-        MoveAndAttack();
-        ApplyGravity();
-        cooldown -= Time.deltaTime;
+        // petites corrections au sol si on flotte/glisse
+        KeepStuckToGround();
 
-        // Met à jour Speed seulement si pas knockback
-        if (animator && !isKnockingBack)
+        if (!isKnockingBack)
         {
-            animator.SetFloat("Speed", speed);
+            MoveTowardsTargetOrAttack();
         }
+
+        if (verbose && InAttackRangeNow())
+            Debug.Log($"[{name}] In range! cooldown={cooldown:0.00}");
+
+
+        ApplyGravity();
+
+        if (cooldown > 0f) cooldown -= Time.deltaTime;
     }
 
     void OnDestroy()
@@ -84,127 +88,198 @@ public class SkeletonAI : MonoBehaviour
             SkeletonManager.Instance.UnregisterSkeleton(gameObject);
     }
 
-    void MoveAndAttack()
+    // ---------- Déplacement + attaque ----------
+    void MoveTowardsTargetOrAttack()
     {
-        if (isKnockingBack || isDead) return;
+        Vector3 to = target.position - transform.position;
 
-        Vector3 toTarget = target.position - transform.position;
-        Vector3 flatDir = new Vector3(toTarget.x, 0f, toTarget.z);
-        float flatDistance = flatDir.magnitude;
-
-        // Rotation fluide
-        if (flatDir.sqrMagnitude > 0.001f)
+        // rotation horizontale fluide
+        Vector3 flat = new Vector3(to.x, 0f, to.z);
+        if (flat.sqrMagnitude > 0.0001f)
         {
-            Quaternion look = Quaternion.LookRotation(flatDir);
+            Quaternion look = Quaternion.LookRotation(flat);
             transform.rotation = Quaternion.Slerp(transform.rotation, look, rotateSpeed * Time.deltaTime);
         }
 
-        speed = 0f;
+        float dist = to.magnitude;
 
-        if (flatDistance > attackRange)
+        if (dist > attackRange || !InAttackRangeNow())
         {
-            Vector3 moveH = flatDir.normalized * moveSpeed;
+            // avancer
+            Vector3 moveH = flat.normalized * moveSpeed;
             cc.Move(moveH * Time.deltaTime);
-            speed = moveH.magnitude;
+            SetAnimSpeed(moveH.magnitude);
         }
         else
         {
+            // frapper
             TryAttack();
+            SetAnimSpeed(0f);
         }
     }
 
-    void ApplyGravity()
+    // ---------- Conditions de frappe robustes ----------
+    bool InAttackRangeNow()
     {
-        if (cc.isGrounded)
-            velocity.y = -1f;
-        else
-            velocity.y += gravity * Time.deltaTime;
+        if (!target) return false;
 
-        cc.Move(velocity * Time.deltaTime);
+        // tolérance verticale
+        float dy = Mathf.Abs(transform.position.y - target.position.y);
+        if (dy > verticalTolerance) return false;
+
+        // distance horizontale
+        Vector3 a = transform.position;
+        Vector3 b = target.position;
+        a.y = 0f; b.y = 0f;
+        float flatDist = Vector3.Distance(a, b);
+        if (flatDist > attackRange) return false;
+
+        // (Optionnel) ligne de vue
+        if (requireLineOfSight)
+        {
+            Vector3 o = transform.position + Vector3.up * 0.9f;
+            Vector3 t = target.position    + Vector3.up * 0.9f;
+
+            // losObstacles = layers "sol/décors" (PAS Enemy/Player)
+            if (Physics.Linecast(o, t, out var hit, losObstacles, QueryTriggerInteraction.Ignore))
+            {
+                // si on tape autre chose que la cible → bloqué
+                if (hit.transform != target && hit.transform.root != target)
+                    return false;
+            }
+        }
+
+        return true;
     }
+
+
 
     void TryAttack()
     {
         if (cooldown > 0f) return;
+        if (!InAttackRangeNow()) return;
 
-        var h = target.GetComponent<Health>();
-        if (h != null)
-            h.TakeDamage(damage);
+        bool didHit = false;
 
-        cooldown = attackCooldown;
+        var ph = target.GetComponent<PlayerHealth>();
+        if (ph != null)
+        {
+            Debug.Log($"[{name}] ATTACK PlayerHealth for {damage}");
+            ph.TakeDamage(damage);
+            didHit = true;
+        }
+        else
+        {
+            var h = target.GetComponent<Health>();
+            if (h != null)
+            {
+                Debug.Log($"[{name}] ATTACK Health for {damage}");
+                h.TakeDamage(damage);
+                didHit = true;
+            }
+        }
+
+        if (didHit)
+            cooldown = attackCooldown;
     }
 
-    public void TakeHit(Vector3 hitDirection, int damage = 5)
+
+    // ---------- Gravité / Sol ----------
+    void ApplyGravity()
+    {
+        if (cc.isGrounded) velocity.y = -1f;
+        else               velocity.y += gravity * Time.deltaTime;
+
+        cc.Move(velocity * Time.deltaTime);
+    }
+
+    void SnapToGroundOnce()
+    {
+        if (Physics.Raycast(transform.position + Vector3.up, Vector3.down, out var hit, snapToGroundDistance, groundLayers, QueryTriggerInteraction.Ignore))
+        {
+            var p = transform.position;
+            p.y = hit.point.y;
+            transform.position = p;
+        }
+    }
+
+    void KeepStuckToGround()
+    {
+        // si on n’est pas grounded, essaye de “recoller” doucement par raycast
+        if (!cc.isGrounded)
+        {
+            if (Physics.Raycast(transform.position + Vector3.up * 0.2f, Vector3.down, out var hit, 0.5f, groundLayers, QueryTriggerInteraction.Ignore))
+            {
+                var p = transform.position;
+                p.y = hit.point.y;
+                transform.position = p;
+                velocity.y = -1f;
+            }
+        }
+    }
+
+    // ---------- Réception d’un coup ----------
+    public void TakeHit(Vector3 hitDirection, int dmg = 5)
     {
         if (isDead) return;
 
-        Health health = GetComponent<Health>();
+        var health = GetComponent<Health>();
         if (health != null)
-            health.TakeDamage(damage);
-
-        if (health != null && health.IsDead)
         {
-            DieImmediately();
-            return;
+            health.TakeDamage(dmg);
+            if (health.IsDead) { DieImmediately(); return; }
         }
 
-        if (hitSound && audioSource)
-            audioSource.PlayOneShot(hitSound);
-
-        StartCoroutine(ApplyKnockback(hitDirection));
+        StartCoroutine(Knockback(hitDirection));
     }
 
-    private IEnumerator ApplyKnockback(Vector3 hitDirection)
+    IEnumerator Knockback(Vector3 dir)
     {
         isKnockingBack = true;
+        if (animator) animator.SetTrigger("Knockback");
 
-        if (animator) animator.SetTrigger("Knockback"); // restera sur Idle
+        float t = 0f, dur = 0.2f;
+        Vector3 k = dir.normalized * knockbackForce; k.y = 1f;
 
-        float knockDuration = 0.2f;
-        float elapsed = 0f;
-        Vector3 knockDir = hitDirection.normalized * knockbackForce;
-        knockDir.y = 1f;
-
-        while (elapsed < knockDuration)
+        while (t < dur)
         {
-            cc.Move(knockDir * Time.deltaTime);
-            elapsed += Time.deltaTime;
+            cc.Move(k * Time.deltaTime);
+            t += Time.deltaTime;
             yield return null;
         }
 
         isKnockingBack = false;
     }
 
+    // ---------- Mort ----------
     public void DieImmediately()
     {
         if (isDead) return;
         isDead = true;
 
-        // Désenregistre immédiatement pour libérer la place (optionnel)
         if (SkeletonManager.Instance != null)
             SkeletonManager.Instance.UnregisterSkeleton(gameObject);
 
-        // Bloquer l'IA et le mouvement
         moveSpeed = 0f;
-        attackRange = 0f;
         cooldown = Mathf.Infinity;
+        if (cc) cc.enabled = false;
 
-        if (cc != null) cc.enabled = false;
-
-        if (animator != null)
-            animator.SetTrigger("Die");
-
-        if (deathSound && audioSource)
-            audioSource.PlayOneShot(deathSound);
+        if (animator) animator.SetTrigger("Die");
+        if (deathSound) audioSource.PlayOneShot(deathSound);
 
         StartCoroutine(DestroyAfterDelay());
     }
 
-    private IEnumerator DestroyAfterDelay()
+    IEnumerator DestroyAfterDelay()
     {
-        yield return new WaitForSeconds(timeBeforeDestroy);
+        yield return new WaitForSeconds(1.5f);
         Destroy(gameObject);
     }
 
-
+    // ---------- util ----------
+    void SetAnimSpeed(float s)
+    {
+        animSpeed = s;
+        if (animator) animator.SetFloat("Speed", animSpeed);
+    }
 }
